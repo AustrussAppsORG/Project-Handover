@@ -411,7 +411,7 @@
   #pickModal { z-index: 220; }
   #gateModal { z-index: 300; }
 
-  /* ── DATABASE (jobs list, passcode, save status) ── */
+  /* ── DATABASE (jobs list, name prompt, save status) ── */
   body:not(.cloud-on) .cloud-only { display: none !important; }
   /* Job details that come from Smartsheet (Project Admin) are read-only. */
   .form-grid input.ss-locked {
@@ -434,7 +434,6 @@
     border: 1.5px solid var(--border); border-radius: var(--radius);
     font-family: 'Barlow', sans-serif; font-size: 14px;
   }
-  .gate-error { color: var(--red); font-size: 13px; min-height: 18px; margin: -6px 0 10px; }
   .jobs-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
   .jobs-toolbar input { flex: 1 1 200px; margin: 0 !important; }
   .jobs-toolbar .btn-outline, #importResults .btn-outline { color: var(--navy); border-color: var(--border); }
@@ -1265,17 +1264,14 @@
   </div>
 </div>
 
-<!-- MODAL: team passcode -->
+<!-- MODAL: your name (asked once per computer) -->
 <div class="modal-overlay" id="gateModal">
   <div class="modal-box">
-    <h3>🔒 Austruss Handovers</h3>
-    <p>Enter the drafting team passcode to open the handover database.</p>
+    <h3>👋 Austruss Handovers</h3>
+    <p>Enter your name. It’s shown against the handovers you save.</p>
     <form onsubmit="submitGate(event)">
-      <label class="field" for="gatePasscode">Team passcode</label>
-      <input class="field" type="password" id="gatePasscode" autocomplete="current-password" required>
-      <label class="field" for="gateEditor">Your name <span style="font-weight:400;color:var(--muted)">(shown against your saves)</span></label>
-      <input class="field" type="text" id="gateEditor" autocomplete="name">
-      <div class="gate-error" id="gateError"></div>
+      <label class="field" for="gateEditor">Your name</label>
+      <input class="field" type="text" id="gateEditor" autocomplete="name" required>
       <div class="modal-actions">
         <button class="btn btn-amber" type="submit" id="gateSubmit">Open</button>
       </div>
@@ -3331,17 +3327,17 @@ document.addEventListener('DOMContentLoaded', () => {
 // ════════════════════════════════════════════════════
 // Jobs live in the shared Austruss Supabase project, table `handovers`.
 // The table is closed to the public key; every call goes through a
-// handover_* function that checks the team passcode first. Images are
+// handover_* function. There is no passcode any more (removed 2026-10-26);
+// the functions still take a p_passcode argument but ignore it. Images are
 // uploaded to R2 by the Worker (/api/images) and stored in `state` as
 // /images/<sha256>.<ext> URLs instead of base64.
 //
 // localStorage keeps its old role as a crash buffer (austruss_autosave),
 // plus: austruss_cloud_job  {id, version, dirty} — the open job
-//       austruss_passcode / austruss_editor — remembered sign-in
+//       austruss_editor — your name, shown against your saves
 const SUPABASE_URL = 'https://vrhapkrtbxcccmbnjkco.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_i-ed9yHRmRJWywa5PqEMuQ_INMTnrrl';
 const CLOUD_JOB_KEY = 'austruss_cloud_job';
-const PASSCODE_KEY = 'austruss_passcode';
 const EDITOR_KEY = 'austruss_editor';
 
 let cloudOn = false;
@@ -3374,7 +3370,7 @@ async function rpc(fn, args) {
     res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
       method: 'POST',
       headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify(Object.assign({ p_passcode: lsGet(PASSCODE_KEY) }, args)),
+      body: JSON.stringify(Object.assign({ p_passcode: null }, args)),
     });
   } catch(e) {
     throw new CloudError('No connection to the database', 0);
@@ -3409,50 +3405,21 @@ function fmtWhen(iso) {
     : d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-// ── Passcode ───────────────────────────────────────
+// ── Your name ──────────────────────────────────────
 let gateResolve = null;
 
-function showGate(message) {
-  document.getElementById('gateError').textContent = message || '';
+function showGate() {
   document.getElementById('gateEditor').value = lsGet(EDITOR_KEY) || '';
   document.getElementById('gateModal').classList.add('open');
-  setTimeout(() => document.getElementById('gatePasscode').focus(), 50);
+  setTimeout(() => document.getElementById('gateEditor').focus(), 50);
   return new Promise(resolve => { gateResolve = resolve; });
 }
 
-async function submitGate(e) {
+function submitGate(e) {
   e.preventDefault();
-  const pass = document.getElementById('gatePasscode').value;
-  const btn = document.getElementById('gateSubmit');
-  btn.disabled = true;
-  document.getElementById('gateError').textContent = '';
-  lsSet(PASSCODE_KEY, pass);
-  try {
-    await rpc('handover_check', {});
-  } catch(err) {
-    lsSet(PASSCODE_KEY, null);
-    document.getElementById('gateError').textContent =
-      err.status === 401 ? 'That passcode isn’t right.' : err.message;
-    btn.disabled = false;
-    return;
-  }
-  btn.disabled = false;
   lsSet(EDITOR_KEY, document.getElementById('gateEditor').value.trim() || null);
-  document.getElementById('gatePasscode').value = '';
   closeModal('gateModal');
   if (gateResolve) { gateResolve(); gateResolve = null; }
-}
-
-// Runs fn; if the passcode was changed under us, asks again and retries once.
-async function withPasscode(fn) {
-  try {
-    return await fn();
-  } catch(err) {
-    if (err.status !== 401) throw err;
-    lsSet(PASSCODE_KEY, null);
-    await showGate('The team passcode has changed — enter the new one.');
-    return fn();
-  }
 }
 
 // ── Boot ───────────────────────────────────────────
@@ -3463,11 +3430,10 @@ async function cloudBoot() {
     if (readCloudJob().dirty || cloudSaving) { e.preventDefault(); e.returnValue = ''; }
   });
 
-  if (!lsGet(PASSCODE_KEY)) await showGate();
-  else {
-    try { await withPasscode(() => rpc('handover_check', {})); }
-    catch(err) { setCloudStatus('⚠ Offline — changes kept on this computer', true); }
-  }
+  lsSet('austruss_passcode', null);  // left over from the old team passcode
+  if (!lsGet(EDITOR_KEY)) await showGate();
+  try { await rpc('handover_check', {}); }
+  catch(err) { setCloudStatus('⚠ Offline — changes kept on this computer', true); }
 
   const job = readCloudJob();
   if (job.id) {
@@ -3500,7 +3466,7 @@ async function openJob(id, opts) {
   let local = null;
   if (opts.recover) { try { local = JSON.parse(lsGet('austruss_autosave')); } catch(e) {} }
   setCloudStatus('Loading…');
-  const row = await withPasscode(() => rpc('handover_get', { p_id: id }));
+  const row = await rpc('handover_get', { p_id: id });
   let data = row.data;
   let job = { id: row.id, version: row.version, dirty: false };
   lastSavedJson = null;
@@ -3536,7 +3502,7 @@ async function openJobs() {
   document.getElementById('jobsModal').classList.add('open');
   document.getElementById('jobsList').innerHTML = '<div class="jobs-empty">Loading…</div>';
   try {
-    jobsCache = await withPasscode(() => rpc('handover_list', {}));
+    jobsCache = await rpc('handover_list', {});
     renderJobs();
   } catch(err) {
     document.getElementById('jobsList').innerHTML =
@@ -3581,7 +3547,7 @@ async function deleteJob(id) {
   const name = [j.job_number, j.project_name].filter(Boolean).join(' — ') || 'this job';
   if (!confirm(`Delete ${name} from the database?`)) return;
   try {
-    await withPasscode(() => rpc('handover_delete', { p_id: id }));
+    await rpc('handover_delete', { p_id: id });
   } catch(err) { showToast('❌ Delete failed: ' + err.message); return; }
   if (readCloudJob().id === id) {
     writeCloudJob(null);
@@ -3647,7 +3613,7 @@ async function doCloudSave() {
   const editsAtStart = cloudEdits;
   setCloudStatus('Saving…');
   try {
-    await withPasscode(() => uploadImagesIn(state));
+    await uploadImagesIn(state);
     const snapshot = cloudSnapshot();
     if (job.id && snapshot === lastSavedJson) {
       // Nothing actually changed (a field lost focus, say): don't bump the
@@ -3657,10 +3623,10 @@ async function doCloudSave() {
       return;
     }
     const data = JSON.parse(snapshot);
-    const r = await withPasscode(() => rpc('handover_save', {
+    const r = await rpc('handover_save', {
       p_id: job.id || null, p_version: job.version || null,
       p_data: data, p_editor: lsGet(EDITOR_KEY),
-    }));
+    });
     writeCloudJob({ id: r.id, version: r.version, dirty: cloudEdits !== editsAtStart });
     lastSavedJson = snapshot;
     saveLocal();
@@ -3725,7 +3691,6 @@ async function uploadDataUrl(dataUrl) {
   try {
     res = await fetch('/api/images/' + key, {
       method: 'PUT', body: bytes,
-      headers: { 'X-Handover-Passcode': lsGet(PASSCODE_KEY) || '' },
     });
   } catch(e) { throw new CloudError('No connection to the image store', 0); }
   if (!res.ok) throw new CloudError('Image upload failed (' + (await res.text()) + ')', res.status);
@@ -3785,10 +3750,10 @@ async function importFiles(fileList, opts) {
       const hash = await sha256Hex(new TextEncoder().encode(text));
       const savedAt = data._savedAt || new Date(f.lastModified || Date.now()).toISOString();
       delete data._savedAt;
-      await withPasscode(() => uploadImagesIn(data));
-      const r = await withPasscode(() => rpc('handover_import', {
+      await uploadImagesIn(data);
+      const r = await rpc('handover_import', {
         p_hash: hash, p_data: data, p_saved_at: savedAt, p_editor: lsGet(EDITOR_KEY),
-      }));
+      });
       lastId = r.id;
       const label = escHtml([data.jobNumber, data.projectName].filter(Boolean).join(' — ') || f.name);
       if (r.created) { added++; row.innerHTML = `✅ ${label}`; }
@@ -3833,10 +3798,10 @@ let ssLoading = null;
 async function loadSsProjects(force) {
   if (ssProjects && !force) return ssProjects;
   if (ssLoading) return ssLoading;
-  ssLoading = withPasscode(async () => {
+  ssLoading = (async () => {
     let res;
     try {
-      res = await fetch('/api/projects', { headers: { 'X-Handover-Passcode': lsGet(PASSCODE_KEY) || '' } });
+      res = await fetch('/api/projects');
     } catch(e) { throw new CloudError('No connection to Smartsheet', 0); }
     if (!res.ok) {
       let msg = res.statusText;
@@ -3844,7 +3809,7 @@ async function loadSsProjects(force) {
       throw new CloudError(msg, res.status);
     }
     return (await res.json()).projects;
-  }).then(list => (ssProjects = list)).finally(() => { ssLoading = null; });
+  })().then(list => (ssProjects = list)).finally(() => { ssLoading = null; });
   return ssLoading;
 }
 

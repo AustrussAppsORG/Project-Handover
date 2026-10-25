@@ -15,13 +15,6 @@
       "bucket_name": "austruss-handover"
     }
   ],
-  "vars": {
-    // Shared Austruss project; the publishable key is safe to ship — the
-    // handovers table is closed to it and only the passcode-checked
-    // handover_* functions are callable.
-    "SUPABASE_URL": "https://vrhapkrtbxcccmbnjkco.supabase.co",
-    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_i-ed9yHRmRJWywa5PqEMuQ_INMTnrrl"
-  },
   // Keep Worker logs in the Cloudflare dashboard (Workers > austruss-handover
   // > Logs) for troubleshooting.
   "observability": {

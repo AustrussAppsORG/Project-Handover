@@ -1,7 +1,8 @@
 # Austruss — Drafting Scope & Details
 
 Drafting scope and project handover tool. Handover jobs are stored in
-Supabase behind a shared team passcode; images go to Cloudflare R2.
+Supabase; images go to Cloudflare R2. There is no passcode (removed
+2026-10-26, nobody could remember it): anyone with the link can use it.
 
 ## Structure
 
@@ -35,9 +36,12 @@ Supabase behind a shared team passcode; images go to Cloudflare R2.
 - `public.handovers` holds one row per job; `data` is the app's whole `state`
   object with base64 images replaced by `/images/...` URLs.
 - The table is closed to the publishable key. Every read/write is a
-  `handover_*` function that checks the passcode (bcrypt hash in
-  `private.handover_settings`). Change it in the Supabase SQL editor:
-  `select private.handover_set_passcode('…');`
+  `handover_*` function. They still take a `p_passcode` argument (so the
+  pre-removal app kept working) but `private.handover_require` now accepts
+  anything; the app sends `null`. To bring a passcode back, see
+  `supabase/migrations/20261026_remove_passcode.sql`.
+- The app asks for your name once per computer (`austruss_editor`) and
+  records it against saves. It clears the old `austruss_passcode` key.
 - Saves carry the version the editor loaded; a mismatch is a 409 and the app
   asks whose version to keep. Deletes are soft (`deleted_at`).
 - Imports dedupe on the SHA-256 of the file (`import_hash`).
@@ -61,7 +65,7 @@ simulated; Supabase is the real shared database, so clean up test rows.
   overwrites the local autosave with a half-filled form.
 - Don't change backend URLs (Supabase / R2) or the shape of `state` and the
   localStorage keys (`austruss_autosave`, `austruss_cloud_job`,
-  `austruss_passcode`, `austruss_editor`) without calling it out, since saved
+  `austruss_editor`) without calling it out, since saved
   jobs and people's browsers depend on them.
 
 ## Light / dark toggle (2026-10-08)

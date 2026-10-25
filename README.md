@@ -8,8 +8,9 @@ variations, with a locked PDF for issuing.
 
 ## Using it
 
-- **Sign in** with the team passcode and your name. Both are remembered on
-  that computer, and your name is recorded against your saves.
+- **Enter your name** the first time you open it on a computer. It's
+  remembered there and recorded against your saves. There's no passcode:
+  anyone with the link can open, edit and delete handovers.
 - **🗂 Jobs** lists every handover. Search, open, start a new one, or delete.
 - **New handovers start by picking the job from Smartsheet Project Admin.**
   Job number, project name, client, site address and city/town fill in and
@@ -40,24 +41,18 @@ variations, with a locked PDF for issuing.
 | Database setup | `supabase/migrations/` (already applied) |
 
 The `handovers` table can't be read with the public key. Every read and
-write goes through a `handover_*` database function that checks the team
-passcode first, so the app ships no secrets. The Worker's one secret is the
-Smartsheet API token.
+write goes through a `handover_*` database function, so the app ships no
+secrets. The team passcode those functions used to check was removed on
+2026-10-26. The Worker's one secret is the Smartsheet API token.
 
 Images are uploaded once, under a fingerprint of their contents, and the job
 keeps a link to them. Later saves only send the form's text.
 
 ## Looking after it
 
-**Change the team passcode.** In the Supabase dashboard, open the
-austruss-online-viewer project → SQL Editor, run this, and click Run:
-
-```sql
-select private.handover_set_passcode('the new passcode');
-```
-
-It takes effect immediately. Everyone is asked for the new one on their next
-save or open, without losing what they were doing.
+**Bring back a passcode.** There isn't one now.
+`supabase/migrations/20261026_remove_passcode.sql` explains how to restore
+the check. The app would also need its passcode screen back.
 
 **Replace the Smartsheet token.** Generate one in Smartsheet → Apps &
 Integrations → API Access (the account needs access to Project Admin), then
