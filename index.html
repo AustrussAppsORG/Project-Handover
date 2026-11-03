@@ -861,6 +861,18 @@
           <div class="field-wrap"><input type="text" id="clientName" placeholder="Client / Builder" onchange="autoSave()"></div>
         </div>
         <div class="form-row">
+          <label>Contract Amount</label>
+          <div class="field-wrap"><input type="text" id="contractAmount" placeholder="e.g. $250,000 + GST" onchange="autoSave()"></div>
+        </div>
+        <div class="form-row">
+          <label>Payment Terms</label>
+          <div class="field-wrap"><textarea id="paymentTerms" rows="2" placeholder="e.g. 30 days from invoice, monthly progress claims" onchange="autoSave()"></textarea></div>
+        </div>
+        <div class="form-row">
+          <label>Deposit</label>
+          <div class="field-wrap"><input type="text" id="deposit" placeholder="e.g. 20% on acceptance" onchange="autoSave()"></div>
+        </div>
+        <div class="form-row">
           <label>Building Type</label>
           <div class="field-wrap">
             <select id="buildingType" onchange="autoSave()">
@@ -2073,7 +2085,8 @@ function dropFiles(e, galleryId, dropId) {
 // COLLECT / APPLY STATE
 // ════════════════════════════════════════════════════
 function collectFormData() {
-  const ids = ['jobHandoverDate','jobNumber','projectName','clientName','buildingType',
+  const ids = ['jobHandoverDate','jobNumber','projectName','clientName',
+                'contractAmount','paymentTerms','deposit','buildingType',
                 'siteAddress','cityTown','proximityToOcean','draftspersons','designTimeAllowed','jobNotes',
                 'cranageNotes','dateNotes',
                 'dateDesignStart','dateDesignEnd','dateDelivery','dateSiteStart','dateInstallation',
@@ -2116,7 +2129,8 @@ function collectFormData() {
 }
 
 function applyStateToForm() {
-  const ids = ['jobHandoverDate','jobNumber','projectName','clientName','buildingType',
+  const ids = ['jobHandoverDate','jobNumber','projectName','clientName',
+                'contractAmount','paymentTerms','deposit','buildingType',
                 'siteAddress','cityTown','proximityToOcean','draftspersons','designTimeAllowed','jobNotes',
                 'cranageNotes','dateNotes',
                 'dateDesignStart','dateDesignEnd','dateDelivery','dateSiteStart','dateInstallation',
@@ -2434,6 +2448,9 @@ function buildLockedHTMLString(s, date) {
     ${infoRow('Austruss Job Number',    s.jobNumber)}
     ${infoRow('Austruss Project Name',  s.projectName)}
     ${infoRow('Client Name',            s.clientName)}
+    ${infoRow('Contract Amount',        s.contractAmount)}
+    ${infoRow('Payment Terms',          s.paymentTerms)}
+    ${infoRow('Deposit',                s.deposit)}
     ${infoRow('Building Type',          s.buildingType)}
     ${infoRow('Site Address',           s.siteAddress)}
     ${infoRow('City / Town',            s.cityTown)}
@@ -2845,6 +2862,9 @@ function exportExcel() {
     ['Austruss Job Number',      s.jobNumber              || ''],
     ['Project Name',             s.projectName            || ''],
     ['Client Name',              s.clientName             || ''],
+    ['Contract Amount',          s.contractAmount         || ''],
+    ['Payment Terms',            s.paymentTerms           || ''],
+    ['Deposit',                  s.deposit                || ''],
     ['Building Type',            s.buildingType           || ''],
     ['City / Town',              s.cityTown               || ''],
     ['Proximity to Ocean',       s.proximityToOcean       || ''],
@@ -2863,11 +2883,12 @@ function exportExcel() {
   ];
   const ws1 = XLSX.utils.aoa_to_sheet(jobData);
   ws1['!cols'] = [{wch:32},{wch:50},{wch:18},{wch:10}];
+  const rowOf = label => jobData.findIndex(r => r[0] === label);
   ws1['!merges'] = [
     {s:{r:0,c:0},e:{r:0,c:3}},
     {s:{r:1,c:0},e:{r:1,c:3}},
-    {s:{r:14,c:0},e:{r:14,c:3}},
-    {s:{r:18,c:0},e:{r:18,c:3}},
+    {s:{r:rowOf('PROJECT LINKS'),c:0},e:{r:rowOf('PROJECT LINKS'),c:3}},
+    {s:{r:rowOf('SITE ADDRESS'),c:0},e:{r:rowOf('SITE ADDRESS'),c:3}},
   ];
   XLSX.utils.book_append_sheet(wb, ws1, 'Job Details');
 
