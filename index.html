@@ -551,6 +551,16 @@
     border-radius: var(--radius); overflow: hidden; border: 2px solid var(--border);
   }
   .variation-img-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #approvedVariations { margin-bottom: 20px; }
+  #approvedVariations .av-title { font-size: 15px; margin: 0 0 4px; color: var(--text); }
+  #approvedVariations .av-note { font-size: 12px; color: var(--muted); margin: 0 0 8px; }
+  .av-wrap { overflow-x: auto; }
+  .av-table { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--surface); color: var(--text); }
+  .av-table th { background: var(--pale2); text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); font-size: 12px; white-space: nowrap; }
+  .av-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .av-table .av-num, .av-table .av-date { white-space: nowrap; font-weight: 600; }
+  .av-table .av-what { white-space: pre-wrap; min-width: 180px; }
+  .av-table .av-files { margin-top: 4px; font-size: 12px; font-weight: 400; white-space: normal; }
   .variation-img-thumb .rm { position: absolute; top: 2px; right: 2px; background: rgba(231,76,60,.85); color: #fff; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 
   /* ── GOOGLE MAPS SECTION ── */
@@ -846,7 +856,7 @@
         <div class="form-row">
           <label>Austruss Job Number</label>
           <div class="field-wrap job-pick">
-            <input type="text" id="jobNumber" placeholder="e.g. AUS-2026-001" onchange="autoSave()">
+            <input type="text" id="jobNumber" placeholder="e.g. AUS-2026-001" onchange="autoSave();loadApprovedVariations()">
             <button class="btn btn-amber btn-sm cloud-only" id="jobPickBtn" onclick="openJobPicker()">🔍 Pick job</button>
             <span class="ss-tag cloud-only" id="ssTag"></span>
           </div>
@@ -1252,6 +1262,7 @@
     </div>
     <div class="section-body">
       <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Record scope variations, change requests and approvals.</p>
+      <div id="approvedVariations"></div>
       <div id="variationsContainer"></div>
       <button class="btn btn-blue btn-sm" onclick="addVariation()" style="margin-top:4px">+ Add Variation</button>
     </div>
@@ -2779,6 +2790,19 @@ function buildLockedHTMLString(s, date) {
   <!-- SITE PHOTOS -->
   ${card(sectionHdr('📷','Site Photos / Access Maps'), renderImgs(s.siteImages,'site photos',false))}
 
+  <!-- APPROVED VARIATIONS (from the Variations app) -->
+  ${approvedVariations.length ? card(sectionHdr('✅','Approved variations'),
+    `<table style="width:100%;border-collapse:collapse;font-size:12px">
+      <tr>${['Number','What’s changing','Why','Drawings','Approved'].map(h => `<th style="${thStyle}">${h}</th>`).join('')}</tr>
+      ${approvedVariations.map((v,i) => `<tr style="background:${i%2===0?C_PALE:'#fff'};vertical-align:top;break-inside:avoid">
+        <td style="padding:8px 12px;border-bottom:1px solid ${C_BORDER};font-weight:700;white-space:nowrap">${esc(v.number)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid ${C_BORDER};white-space:pre-wrap">${esc(v.what_changing)}${(v.files||[]).length ? '<div style="margin-top:4px;font-size:11px">Mark-ups: ' + v.files.map(f => `<a href="${esc(variationFileUrl(f.id))}">${esc(f.name)}</a>`).join(', ') + '</div>' : ''}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid ${C_BORDER};white-space:nowrap">${esc(VARIATION_WHY[v.why] || v.why || '')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid ${C_BORDER}">${esc(v.drawing_refs || '')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid ${C_BORDER};white-space:nowrap">${fmtDate(v.approved_at)}</td>
+      </tr>`).join('')}
+    </table>`) : ''}
+
   <!-- VARIATIONS -->
   ${(s.variations||[]).length ? card(sectionHdr('📝','Variations'), (s.variations||[]).map((v,i) => {
     const bg = i%2===0?C_PALE:'#fff';
@@ -3855,6 +3879,7 @@ function updateSsLocks() {
   }
   const btn = document.getElementById('jobPickBtn');
   if (btn) btn.textContent = linked ? '🔄 Change job' : '🔍 Pick job';
+  loadApprovedVariations();
   const tag = document.getElementById('ssTag');
   if (tag) tag.textContent = !cloudOn ? '' : linked ? '✓ Smartsheet' : (state.ssLinked === 'unlisted' ? 'Not in Smartsheet' : '');
 }
@@ -3983,6 +4008,75 @@ async function refreshFromSmartsheet() {
     const p = (await loadSsProjects()).find(x => x.number === state.jobNumber);
     if (p && applySsProject(p)) showToast('🔄 Job details updated from Smartsheet');
   } catch(e) { /* Smartsheet unreachable: keep what was saved */ }
+}
+
+// ── Approved variations (read-only, from the Variations app) ──
+// Design-change variations approved in variations.austrussapps.com for this
+// job. Only non-commercial fields come back (no price). Rendered into its own
+// container, not form state, so it needs no formLoading guard.
+const VARIATION_WHY = { client_request:'Client request', design_error:'Design error', site_issue:'Site issue', authority:'Authority', engineer:'Engineer' };
+const VARIATIONS_APP = 'https://variations.austrussapps.com';
+let approvedVariations = [];
+let approvedVariationsJob = null;
+function variationFileUrl(id) { return VARIATIONS_APP + '/api/files/' + encodeURIComponent(id); }
+
+function renderApprovedVariations() {
+  const box = document.getElementById('approvedVariations');
+  if (!box) return;
+  box.textContent = '';
+  if (!approvedVariations.length) return;
+  const el = (tag, text, cls) => { const n = document.createElement(tag); if (text != null) n.textContent = text; if (cls) n.className = cls; return n; };
+  box.appendChild(el('h3', 'Approved variations', 'av-title'));
+  box.appendChild(el('p', 'Design changes approved in the Variations app. File links open after a Smartsheet sign-in.', 'av-note'));
+  const wrap = el('div', null, 'av-wrap');
+  const table = el('table', null, 'av-table');
+  const hr = el('tr');
+  ['Number', 'What’s changing', 'Why', 'Drawings', 'Approved'].forEach(h => hr.appendChild(el('th', h)));
+  table.appendChild(hr);
+  approvedVariations.forEach(v => {
+    const tr = el('tr');
+    tr.appendChild(el('td', v.number, 'av-num'));
+    const what = el('td', v.what_changing, 'av-what');
+    const files = Array.isArray(v.files) ? v.files : [];
+    if (files.length) {
+      const fl = el('div', 'Mark-ups: ', 'av-files');
+      files.forEach((f, i) => {
+        if (i) fl.appendChild(document.createTextNode(', '));
+        const a = el('a', f.name);
+        a.href = variationFileUrl(f.id);
+        a.target = '_blank';
+        a.rel = 'noopener';
+        fl.appendChild(a);
+      });
+      what.appendChild(fl);
+    }
+    tr.appendChild(what);
+    tr.appendChild(el('td', VARIATION_WHY[v.why] || v.why || ''));
+    tr.appendChild(el('td', v.drawing_refs || ''));
+    let when = '';
+    if (v.approved_at) { const d = new Date(v.approved_at); when = isNaN(d) ? '' : d.toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'numeric' }); }
+    tr.appendChild(el('td', when, 'av-date'));
+    table.appendChild(tr);
+  });
+  wrap.appendChild(table);
+  box.appendChild(wrap);
+}
+
+async function loadApprovedVariations() {
+  const jobNumber = ((document.getElementById('jobNumber') || {}).value || '').trim();
+  if (!cloudOn || jobNumber === approvedVariationsJob) return;
+  approvedVariationsJob = jobNumber;
+  if (!jobNumber) { approvedVariations = []; renderApprovedVariations(); return; }
+  try {
+    const rows = await rpc('variation_handover_list', { p_job: jobNumber });
+    if (approvedVariationsJob !== jobNumber) return; // job changed while loading
+    approvedVariations = Array.isArray(rows) ? rows : [];
+  } catch(e) {
+    console.warn('Approved variations unavailable:', e.message);
+    if (approvedVariationsJob === jobNumber) approvedVariationsJob = null; // retry next time
+    approvedVariations = [];
+  }
+  renderApprovedVariations();
 }
 </script>
 </body>
