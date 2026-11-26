@@ -558,6 +558,7 @@
   .av-table { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--surface); color: var(--text); }
   .av-table th { background: var(--pale2); text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); font-size: 12px; white-space: nowrap; }
   .av-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .av-table a { color: var(--blue2); }
   .av-table .av-num, .av-table .av-date { white-space: nowrap; font-weight: 600; }
   .av-table .av-what { white-space: pre-wrap; min-width: 180px; }
   .av-table .av-files { margin-top: 4px; font-size: 12px; font-weight: 400; white-space: normal; }
@@ -2391,7 +2392,7 @@ function printPDF() {
 }
 
 function buildLockedHTMLString(s, date) {
-  const esc = str => (str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const esc = str => String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const fmtDate = d => {
     if (!d) return '—';
     try { return new Date(d).toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'}); } catch(e){ return d; }
@@ -4066,14 +4067,18 @@ async function loadApprovedVariations() {
   const jobNumber = ((document.getElementById('jobNumber') || {}).value || '').trim();
   if (!cloudOn || jobNumber === approvedVariationsJob) return;
   approvedVariationsJob = jobNumber;
-  if (!jobNumber) { approvedVariations = []; renderApprovedVariations(); return; }
+  // New job: drop the old job's rows now, so nothing stale is shown or printed while loading.
+  approvedVariations = [];
+  renderApprovedVariations();
+  if (!jobNumber) return;
   try {
     const rows = await rpc('variation_handover_list', { p_job: jobNumber });
     if (approvedVariationsJob !== jobNumber) return; // job changed while loading
     approvedVariations = Array.isArray(rows) ? rows : [];
   } catch(e) {
+    if (approvedVariationsJob !== jobNumber) return; // job changed while loading
     console.warn('Approved variations unavailable:', e.message);
-    if (approvedVariationsJob === jobNumber) approvedVariationsJob = null; // retry next time
+    approvedVariationsJob = null; // retry next time
     approvedVariations = [];
   }
   renderApprovedVariations();
